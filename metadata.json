@@ -1,0 +1,8 @@
+{
+  "name": "LaporKerja AI",
+  "description": "Aplikasi laporan kerja lapangan otomatis berbasis AI untuk mekanik dan pekerja teknis.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
