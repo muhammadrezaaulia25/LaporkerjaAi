@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { Send, Mail, FileSpreadsheet, CheckCircle2, RotateCcw, Loader2, Sparkles, Share2, Copy, CloudUpload, Link as LinkIcon, FileText, Download, MapPin, Edit3, Save, RefreshCw } from 'lucide-react';
 import { AnalysisResult, AppSettings } from '../types';
 import { jsPDF } from 'jspdf';
+import { uploadToSupabase } from '../services/supabaseService';
 
 interface ReportCardProps {
   imageSrc: string;
@@ -52,21 +54,25 @@ const ReportCard: React.FC<ReportCardProps> = ({ imageSrc, result, settings, onR
 
   // Auto-Save to Cloud Effect
   useEffect(() => {
-    if (settings.autoSaveToCloud && settings.googleScriptUrl && !publicUrl) {
-        const runAutoSave = async () => {
-            try {
-                // Show 'cloud' loading state on the button to give feedback
-                setLoadingAction('cloud');
-                await performCloudUpload();
-                console.log("Auto-save to cloud successful");
-            } catch (e) {
-                console.warn("Auto-save failed", e);
-                // We don't alert here to avoid disrupting the user flow, just log it
-            } finally {
-                setLoadingAction(null);
-            }
-        };
-        runAutoSave();
+    if (settings.autoSaveToCloud && !publicUrl) {
+        // Cek apakah ada konfigurasi cloud (Supabase ATAU Google Script)
+        const hasSupabase = settings.supabaseUrl && settings.supabaseKey;
+        const hasGoogle = settings.googleScriptUrl;
+
+        if (hasSupabase || hasGoogle) {
+            const runAutoSave = async () => {
+                try {
+                    setLoadingAction('cloud');
+                    await performCloudUpload();
+                    console.log("Auto-save to cloud successful");
+                } catch (e) {
+                    console.warn("Auto-save failed", e);
+                } finally {
+                    setLoadingAction(null);
+                }
+            };
+            runAutoSave();
+        }
     }
   }, []); // Run once on mount
   
@@ -112,56 +118,67 @@ ${result.details.map(d => `- ${d}`).join('\n')}
     return new File([blob], filename, { type: blob.type });
   };
 
-  // Internal helper to handle upload logic
+  // Internal helper to handle upload logic (Supabase OR Google Script)
   const performCloudUpload = async (): Promise<string | null> => {
     // Return existing URL if available
     if (publicUrl) return publicUrl;
-    if (!settings.googleScriptUrl) return null;
-
-    try {
-        const payload = {
-            image: imageSrc.split(',')[1],
-            mimeType: "image/jpeg",
-            filename: `Laporan_${result.timestamp.replace(/[\/\s:,]/g, '-')}.jpg`,
-            report: {
-                ...result,
-                location: location,
-                generatedAt: new Date().toISOString()
-            }
-        };
-
-        const response = await fetch(settings.googleScriptUrl, {
-            method: 'POST',
-            redirect: 'follow',
-            headers: {
-                'Content-Type': 'text/plain;charset=utf-8', 
-            },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            throw new Error(`Server returned ${response.status}`);
-        }
-
-        const text = await response.text();
-        let generatedUrl = "(Link Foto tersedia di Google Drive Kantor)";
-        
-        try {
-            const json = JSON.parse(text);
-            if (json.url) generatedUrl = json.url;
-            else if (json.imageUrl) generatedUrl = json.imageUrl;
-            else if (json.fileUrl) generatedUrl = json.fileUrl;
-            else if (json.link) generatedUrl = json.link;
-        } catch (e) {
-            console.log("Response was not JSON, using default success message");
-        }
-
-        setPublicUrl(generatedUrl);
-        return generatedUrl;
-    } catch (error) {
-        console.error("Internal upload error", error);
-        throw error;
+    
+    // PRIORITY 1: SUPABASE
+    if (settings.supabaseUrl && settings.supabaseKey) {
+        const url = await uploadToSupabase(settings, imageSrc, { ...result, location });
+        setPublicUrl(url);
+        return url;
     }
+
+    // PRIORITY 2: GOOGLE SCRIPT
+    if (settings.googleScriptUrl) {
+        try {
+            const payload = {
+                image: imageSrc.split(',')[1],
+                mimeType: "image/jpeg",
+                filename: `Laporan_${result.timestamp.replace(/[\/\s:,]/g, '-')}.jpg`,
+                report: {
+                    ...result,
+                    location: location,
+                    generatedAt: new Date().toISOString()
+                }
+            };
+
+            const response = await fetch(settings.googleScriptUrl, {
+                method: 'POST',
+                redirect: 'follow',
+                headers: {
+                    'Content-Type': 'text/plain;charset=utf-8', 
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+            }
+
+            const text = await response.text();
+            let generatedUrl = "(Link Foto tersedia di Drive)";
+            
+            try {
+                const json = JSON.parse(text);
+                if (json.url) generatedUrl = json.url;
+                else if (json.imageUrl) generatedUrl = json.imageUrl;
+                else if (json.fileUrl) generatedUrl = json.fileUrl;
+                else if (json.link) generatedUrl = json.link;
+            } catch (e) {
+                console.log("Response was not JSON, using default success message");
+            }
+
+            setPublicUrl(generatedUrl);
+            return generatedUrl;
+        } catch (error) {
+            console.error("Google script upload error", error);
+            throw error;
+        }
+    }
+
+    return null;
   };
 
   const handlePdfDownload = async () => {
@@ -284,8 +301,8 @@ ${result.details.map(d => `- ${d}`).join('\n')}
   const handleCloudUpload = async () => {
     if (loadingAction) return;
     
-    if (!settings.googleScriptUrl) {
-        alert("Mohon isi 'URL Google Apps Script' di menu Pengaturan (ikon Gear) terlebih dahulu untuk mengaktifkan fitur ini.");
+    if (!settings.googleScriptUrl && (!settings.supabaseUrl || !settings.supabaseKey)) {
+        alert("Mohon isi 'Supabase URL/Key' ATAU 'URL Google Apps Script' di menu Pengaturan terlebih dahulu.");
         return;
     }
 
@@ -293,10 +310,10 @@ ${result.details.map(d => `- ${d}`).join('\n')}
     try {
         await performCloudUpload();
         await new Promise(resolve => setTimeout(resolve, 800)); 
-        alert("✅ Data Berhasil Disimpan ke Cloud!\n\nLaporan dan Foto telah dikirim ke Spreadsheet/Drive kantor.");
+        alert("✅ Data Berhasil Disimpan ke Cloud!\n\nLaporan tersimpan di database dan foto telah terupload.");
     } catch (error) {
         console.error("Cloud upload error", error);
-        alert("Gagal menghubungi Google Script. \n\nPastikan URL benar dan Script di-deploy sebagai Web App dengan akses 'Anyone'.");
+        alert("Gagal menyimpan ke Cloud. Periksa koneksi internet dan pengaturan API Key.");
     } finally {
         setLoadingAction(null);
     }
@@ -335,7 +352,8 @@ ${result.details.map(d => `- ${d}`).join('\n')}
     setLoadingAction('whatsapp');
     
     let urlOverride = publicUrl;
-    if (settings.googleScriptUrl && !publicUrl) {
+    // Try to auto-upload if configs exist and no URL yet
+    if ((settings.supabaseUrl || settings.googleScriptUrl) && !publicUrl) {
         try {
             urlOverride = await performCloudUpload();
         } catch (e) {
@@ -372,7 +390,7 @@ ${result.details.map(d => `- ${d}`).join('\n')}
 
     // 1. Try to upload to cloud first if configured (best experience for links)
     let urlOverride = publicUrl;
-    if (settings.googleScriptUrl && !publicUrl) {
+    if ((settings.supabaseUrl || settings.googleScriptUrl) && !publicUrl) {
         try {
             urlOverride = await performCloudUpload();
         } catch (e) {
@@ -403,8 +421,8 @@ ${result.details.map(d => `- ${d}`).join('\n')}
     setTimeout(() => {
         if (clipboardSuccess) {
             alert("✅ Foto telah disalin ke Clipboard.\n\nSilakan 'PASTE' (Tempel) di badan email Anda.");
-        } else if (!urlOverride && !settings.googleScriptUrl) {
-             alert("⚠️ Info: Foto tidak dapat dilampirkan otomatis.\n\nSilakan 'PASTE' manual atau isi 'Google Apps Script URL' di pengaturan agar Link Foto muncul.");
+        } else if (!urlOverride && !settings.googleScriptUrl && !settings.supabaseUrl) {
+             alert("⚠️ Info: Foto tidak dapat dilampirkan otomatis.\n\nSilakan 'PASTE' manual atau isi konfigurasi Cloud (Supabase/Google Script) agar Link Foto muncul.");
         }
     }, 500);
 
@@ -654,7 +672,7 @@ ${result.details.map(d => `- ${d}`).join('\n')}
                   )}
                   <div className="text-left leading-none">
                     <span className="block font-bold text-sm">{publicUrl ? 'Terupload' : 'Simpan Cloud'}</span>
-                    <span className="block text-[10px] text-white/80 font-normal mt-1">{publicUrl ? 'Data Tersimpan' : 'Ke Google Script'}</span>
+                    <span className="block text-[10px] text-white/80 font-normal mt-1">{publicUrl ? 'Data Tersimpan' : 'Ke DB / Drive'}</span>
                   </div>
                 </button>
             </div>

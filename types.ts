@@ -4,6 +4,8 @@ export interface AppSettings {
   emailAddress: string;
   spreadsheetUrl: string;
   googleScriptUrl?: string;
+  supabaseUrl?: string;
+  supabaseKey?: string;
   autoSaveToCloud?: boolean;
 }
 

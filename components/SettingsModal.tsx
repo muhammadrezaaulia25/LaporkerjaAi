@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, Settings as SettingsIcon } from 'lucide-react';
+import { X, Save, Settings as SettingsIcon, Database } from 'lucide-react';
 import { AppSettings } from '../types';
 
 interface SettingsModalProps {
@@ -101,7 +101,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, currentS
 
           <div className="space-y-1">
             <label className="block text-xs font-medium text-brand-400 uppercase tracking-wider ml-1">
-               URL Google Apps Script (Web App)
+               URL Google Apps Script (Opsional)
             </label>
             <div className="relative group">
               <input
@@ -113,14 +113,52 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, currentS
                 className="w-full px-5 py-3.5 bg-slate-800 border border-slate-700 rounded-2xl text-white placeholder-slate-500 focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none transition-all shadow-inner"
               />
             </div>
-             <p className="text-xs text-slate-500 ml-1">Opsional: Untuk mendapatkan Link Publik Gambar & Simpan Cloud.</p>
+          </div>
+
+          {/* Supabase Section */}
+          <div className="border-t border-slate-800 pt-4 mt-4 space-y-4">
+             <div className="flex items-center gap-2 mb-2">
+                <Database className="w-4 h-4 text-green-400" />
+                <h3 className="text-sm font-bold text-white">Database Supabase (Opsional)</h3>
+             </div>
+             
+             <div className="space-y-1">
+                <label className="block text-xs font-medium text-slate-400 ml-1">
+                   Supabase Project URL
+                </label>
+                <input
+                    type="text"
+                    name="supabaseUrl"
+                    value={formData.supabaseUrl || ''}
+                    onChange={handleChange}
+                    placeholder="https://xyz.supabase.co"
+                    className="w-full px-5 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-600 focus:ring-2 focus:ring-green-500 outline-none text-sm"
+                />
+             </div>
+
+             <div className="space-y-1">
+                <label className="block text-xs font-medium text-slate-400 ml-1">
+                   Supabase Anon Key
+                </label>
+                <input
+                    type="password"
+                    name="supabaseKey"
+                    value={formData.supabaseKey || ''}
+                    onChange={handleChange}
+                    placeholder="eyJhbGciOi..."
+                    className="w-full px-5 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-600 focus:ring-2 focus:ring-green-500 outline-none text-sm"
+                />
+             </div>
+             <p className="text-[10px] text-slate-500">
+               Isi ini untuk menyimpan laporan ke database Supabase dan mendapatkan link gambar permanen.
+             </p>
           </div>
 
           {/* Auto Save Toggle */}
-          <div className="flex items-center justify-between py-2 px-1">
+          <div className="flex items-center justify-between py-2 px-1 border-t border-slate-800 mt-2 pt-4">
             <div className="space-y-0.5">
               <label className="text-sm font-medium text-white">Simpan Otomatis</label>
-              <p className="text-xs text-slate-500">Upload ke Cloud setelah analisis selesai</p>
+              <p className="text-xs text-slate-500">Upload ke Cloud/DB setelah analisis</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input 
